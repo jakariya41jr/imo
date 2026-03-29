@@ -1,0 +1,587 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+    <title>JRS Connect · imo style</title>
+    <!-- Tailwind CSS CDN + Font Awesome -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <style>
+        /* custom scrollbar, smooth transitions */
+        .messages-container::-webkit-scrollbar { width: 5px; }
+        .messages-container::-webkit-scrollbar-track { background: #eef2f6; border-radius: 10px; }
+        .messages-container::-webkit-scrollbar-thumb { background: #b9c4d1; border-radius: 10px; }
+        .contact-item { transition: all 0.2s; }
+        .contact-item.active { background: #e9f0fe; border-left: 3px solid #1e88e5; }
+        .bubble-sent { background: #1e88e5; color: white; border-radius: 18px 18px 4px 18px; }
+        .bubble-received { background: #e4e9f0; color: #1f2937; border-radius: 18px 18px 18px 4px; }
+        .typing-dots span { animation: blink 1.4s infinite; font-size: 18px; }
+        .typing-dots span:nth-child(2) { animation-delay: 0.2s; }
+        .typing-dots span:nth-child(3) { animation-delay: 0.4s; }
+        @keyframes blink { 0%, 60%, 100% { opacity: 0.2; } 30% { opacity: 1; } }
+        .toast { transition: opacity 0.3s ease; }
+    </style>
+</head>
+<body class="bg-gray-100 font-sans antialiased h-screen overflow-hidden">
+
+    <!-- LOGIN SCREEN -->
+    <div id="loginScreen" class="flex items-center justify-center h-screen w-full bg-gradient-to-br from-blue-50 to-indigo-100">
+        <div class="bg-white rounded-3xl shadow-2xl p-8 w-11/12 max-w-md text-center">
+            <div class="bg-blue-600 w-20 h-20 rounded-full flex items-center justify-center mx-auto shadow-lg">
+                <i class="fas fa-comment-dots text-white text-3xl"></i>
+            </div>
+            <h2 class="text-3xl font-bold text-gray-800 mt-4">JRS Connect</h2>
+            <p class="text-gray-500 mb-8">Real‑time chat · audio calls · imo style</p>
+            <button id="googleSignInBtn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 rounded-xl shadow-md transition flex items-center justify-center gap-3">
+                <i class="fab fa-google text-white"></i> Sign in with Google
+            </button>
+        </div>
+    </div>
+
+    <!-- MAIN APP (imo sidebar + chat) -->
+    <div id="appContainer" class="hidden h-screen w-full flex flex-col md:flex-row bg-white shadow-2xl overflow-hidden">
+        <!-- LEFT SIDEBAR -->
+        <div class="w-full md:w-80 lg:w-96 bg-white border-r border-gray-200 flex flex-col h-full">
+            <div class="bg-blue-600 px-5 py-4 flex justify-between items-center text-white">
+                <div class="flex items-center gap-3">
+                    <img id="currentUserAvatar" class="w-10 h-10 rounded-full border-2 border-white object-cover" src="https://ui-avatars.com/api/?background=ffffff&color=007aff" alt="avatar">
+                    <div>
+                        <p id="currentUserName" class="font-semibold text-sm">Loading...</p>
+                        <p class="text-xs text-blue-100">online</p>
+                    </div>
+                </div>
+                <button id="logoutBtn" class="bg-blue-500 hover:bg-blue-700 p-2 rounded-full transition w-8 h-8 flex items-center justify-center">
+                    <i class="fas fa-sign-out-alt text-sm"></i>
+                </button>
+            </div>
+            <div class="p-3 border-b border-gray-100 bg-gray-50">
+                <div class="relative">
+                    <i class="fas fa-search absolute left-3 top-3 text-gray-400 text-sm"></i>
+                    <input type="text" id="searchContacts" placeholder="Search contacts..." class="w-full pl-9 pr-3 py-2 bg-gray-100 rounded-xl text-sm focus:outline-none focus:ring-1 focus:ring-blue-300">
+                </div>
+            </div>
+            <div id="contactsList" class="flex-1 overflow-y-auto py-2 space-y-1"></div>
+        </div>
+
+        <!-- RIGHT CHAT AREA -->
+        <div class="flex-1 flex flex-col bg-[#f8fafc] relative">
+            <!-- Chat Header -->
+            <div class="bg-white border-b border-gray-200 px-5 py-3 flex items-center justify-between shadow-sm">
+                <div class="flex items-center gap-3">
+                    <img id="chatContactAvatar" class="w-10 h-10 rounded-full object-cover" src="https://ui-avatars.com/api/?background=1e88e5&color=fff" alt="contact">
+                    <div>
+                        <h2 id="chatContactName" class="font-semibold text-gray-800 text-md">Select a contact</h2>
+                        <div id="presenceStatus" class="text-xs text-gray-400">-</div>
+                        <div id="typingIndicator" class="text-xs text-blue-500 italic hidden">typing...</div>
+                    </div>
+                </div>
+                <button id="audioCallBtn" class="bg-gray-100 hover:bg-blue-50 text-blue-700 font-medium p-2.5 rounded-full transition w-10 h-10 flex items-center justify-center shadow-sm">
+                    <i class="fas fa-phone-alt text-blue-600 text-lg"></i>
+                </button>
+            </div>
+
+            <!-- Messages -->
+            <div id="messagesArea" class="flex-1 overflow-y-auto p-4 space-y-3 messages-container bg-[#f7f9fc]"></div>
+
+            <!-- Input (text only) -->
+            <div class="bg-white border-t border-gray-200 p-3 flex items-center gap-2">
+                <input type="text" id="messageInput" placeholder="Type a message..." class="flex-1 bg-gray-100 rounded-full py-3 px-5 text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-300 transition" autocomplete="off">
+                <button id="sendBtn" class="bg-blue-600 hover:bg-blue-700 text-white rounded-full p-3 w-12 h-12 flex items-center justify-center shadow-md transition disabled:opacity-50">
+                    <i class="fas fa-paper-plane"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast container -->
+    <div id="toastContainer" class="fixed bottom-5 left-1/2 transform -translate-x-1/2 z-50 pointer-events-none"></div>
+
+    <!-- Firebase SDK v10 modular + simple-peer (for WebRTC) -->
+    <script type="importmap">
+        {
+            "imports": {
+                "firebase/app": "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js",
+                "firebase/auth": "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js",
+                "firebase/database": "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js",
+                "simple-peer": "https://cdn.skypack.dev/simple-peer@9.11.1"
+            }
+        }
+    </script>
+
+    <script type="module">
+        import { initializeApp } from "firebase/app";
+        import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "firebase/auth";
+        import { getDatabase, ref, set, update, onValue, push, remove, serverTimestamp, onDisconnect, get } from "firebase/database";
+        import SimplePeer from "simple-peer";
+
+        // ------------------- FIREBASE CONFIG -------------------
+        const firebaseConfig = {
+            apiKey: "AIzaSyBxGKeVjE7TEmO1XvkR34LrSYKgzOPiV5A",
+            authDomain: "js-ff-13104.firebaseapp.com",
+            databaseURL: "https://js-ff-13104-default-rtdb.firebaseio.com",
+            projectId: "js-ff-13104",
+            storageBucket: "js-ff-13104.appspot.com",
+            appId: "1:755798277039:android:50951120df51de9b958d5a"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getDatabase(app);
+        const provider = new GoogleAuthProvider();
+
+        // DOM elements
+        const loginScreen = document.getElementById('loginScreen');
+        const appContainer = document.getElementById('appContainer');
+        const googleBtn = document.getElementById('googleSignInBtn');
+        const logoutBtn = document.getElementById('logoutBtn');
+        const contactsDiv = document.getElementById('contactsList');
+        const searchInput = document.getElementById('searchContacts');
+        const messagesArea = document.getElementById('messagesArea');
+        const messageInput = document.getElementById('messageInput');
+        const sendBtn = document.getElementById('sendBtn');
+        const chatContactName = document.getElementById('chatContactName');
+        const chatContactAvatar = document.getElementById('chatContactAvatar');
+        const currentUserAvatar = document.getElementById('currentUserAvatar');
+        const currentUserNameSpan = document.getElementById('currentUserName');
+        const presenceStatusSpan = document.getElementById('presenceStatus');
+        const typingIndicatorDiv = document.getElementById('typingIndicator');
+        const audioCallBtn = document.getElementById('audioCallBtn');
+
+        // Global state
+        let currentUser = null;                // Firebase user object
+        let selectedContact = null;            // { uid, name, email, photoURL }
+        let contactsUnsubscribe = null;
+        let messagesUnsubscribe = null;
+        let typingUnsubscribe = null;
+        let presenceUnsubscribe = null;
+        let callListenerUnsubscribe = null;
+        let peer = null;                       // SimplePeer instance
+        let localStream = null;                // audio stream
+        let currentCallId = null;
+
+        // Helper: generate conversation ID
+        function getConversationId(uid1, uid2) {
+            return uid1 < uid2 ? `${uid1}_${uid2}` : `${uid2}_${uid1}`;
+        }
+
+        // Toast notifications
+        function showToast(message, type = 'info') {
+            const toast = document.createElement('div');
+            toast.className = `toast px-4 py-2 rounded-full shadow-lg text-sm font-medium pointer-events-auto ${type === 'error' ? 'bg-red-500 text-white' : 'bg-gray-800 text-white'}`;
+            toast.innerText = message;
+            const container = document.getElementById('toastContainer');
+            container.appendChild(toast);
+            setTimeout(() => { toast.style.opacity = '0'; setTimeout(() => toast.remove(), 300); }, 3000);
+        }
+
+        // Save user to Realtime DB with presence
+        async function saveUserToDB(user) {
+            if (!user) return;
+            const userRef = ref(db, `users/${user.uid}`);
+            const userData = {
+                uid: user.uid,
+                name: user.displayName || user.email.split('@')[0],
+                email: user.email,
+                photoURL: user.photoURL || `https://ui-avatars.com/api/?name=${user.displayName?.[0] || 'U'}&background=1e88e5&color=fff`,
+                status: 'online',
+                lastSeen: serverTimestamp(),
+                updatedAt: serverTimestamp()
+            };
+            await set(userRef, userData);
+            // set onDisconnect: mark offline with timestamp
+            const userStatusRef = ref(db, `users/${user.uid}/status`);
+            const userLastSeenRef = ref(db, `users/${user.uid}/lastSeen`);
+            onDisconnect(userStatusRef).set('offline');
+            onDisconnect(userLastSeenRef).set(serverTimestamp());
+        }
+
+        // Update own presence (online)
+        function updateOwnPresence(online) {
+            if (!currentUser) return;
+            const updates = {
+                [`users/${currentUser.uid}/status`]: online ? 'online' : 'offline',
+                [`users/${currentUser.uid}/lastSeen`]: serverTimestamp()
+            };
+            update(ref(db), updates);
+        }
+
+        // Fetch & listen contacts list (all users except current)
+        function startContactsListener() {
+            if (!currentUser) return;
+            if (contactsUnsubscribe) contactsUnsubscribe();
+            const usersRef = ref(db, 'users');
+            contactsUnsubscribe = onValue(usersRef, (snapshot) => {
+                const users = snapshot.val() || {};
+                const contactsList = [];
+                for (let uid in users) {
+                    if (uid !== currentUser.uid) {
+                        const u = users[uid];
+                        contactsList.push({
+                            uid,
+                            name: u.name || u.email?.split('@')[0],
+                            email: u.email,
+                            photoURL: u.photoURL,
+                            status: u.status || 'offline',
+                            lastSeen: u.lastSeen ? new Date(u.lastSeen).toLocaleTimeString([], { hour: '2-digit', minute:'2-digit' }) : 'unknown'
+                        });
+                    }
+                }
+                contactsList.sort((a,b) => a.name.localeCompare(b.name));
+                renderContacts(contactsList);
+            });
+        }
+
+        function renderContacts(contacts) {
+            const searchTerm = searchInput.value.toLowerCase();
+            const filtered = contacts.filter(c => c.name.toLowerCase().includes(searchTerm) || c.email.toLowerCase().includes(searchTerm));
+            if (!filtered.length) {
+                contactsDiv.innerHTML = `<div class="text-center text-gray-400 py-8"><i class="fas fa-user-friends text-3xl mb-2 opacity-40"></i><p>No contacts found</p></div>`;
+                return;
+            }
+            contactsDiv.innerHTML = filtered.map(contact => {
+                const statusText = contact.status === 'online' ? 'Online' : `Last seen ${contact.lastSeen}`;
+                const statusColor = contact.status === 'online' ? 'bg-green-500' : 'bg-gray-400';
+                return `
+                    <div data-uid="${contact.uid}" class="contact-item flex items-center gap-3 p-3 mx-2 rounded-xl cursor-pointer hover:bg-gray-100 ${selectedContact?.uid === contact.uid ? 'active' : ''}">
+                        <img src="${contact.photoURL}" class="w-12 h-12 rounded-full object-cover border border-gray-200" alt="pic">
+                        <div class="flex-1 min-w-0">
+                            <p class="font-medium text-gray-800 truncate">${escapeHtml(contact.name)}</p>
+                            <div class="flex items-center gap-1 text-xs">
+                                <span class="w-2 h-2 ${statusColor} rounded-full"></span>
+                                <span class="text-gray-500 truncate">${statusText}</span>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+            document.querySelectorAll('.contact-item').forEach(el => {
+                const uid = el.getAttribute('data-uid');
+                const contact = filtered.find(c => c.uid === uid);
+                if (contact) el.addEventListener('click', () => selectContact(contact));
+            });
+        }
+
+        function escapeHtml(str) { if (!str) return ''; return str.replace(/[&<>]/g, function(m) { if (m === '&') return '&amp;'; if (m === '<') return '&lt;'; if (m === '>') return '&gt;'; return m; }); }
+
+        // Typing indicator logic
+        let typingTimeout = null;
+        function startTyping() {
+            if (!selectedContact || !currentUser) return;
+            const typingRef = ref(db, `typing/${getConversationId(currentUser.uid, selectedContact.uid)}/${currentUser.uid}`);
+            set(typingRef, { typing: true, timestamp: serverTimestamp() });
+            if (typingTimeout) clearTimeout(typingTimeout);
+            typingTimeout = setTimeout(() => {
+                remove(typingRef);
+            }, 2000);
+        }
+        function stopTyping() {
+            if (!selectedContact || !currentUser) return;
+            const typingRef = ref(db, `typing/${getConversationId(currentUser.uid, selectedContact.uid)}/${currentUser.uid}`);
+            remove(typingRef);
+            if (typingTimeout) clearTimeout(typingTimeout);
+        }
+
+        // Listen for remote typing
+        function startTypingListener() {
+            if (typingUnsubscribe) typingUnsubscribe();
+            if (!selectedContact || !currentUser) return;
+            const convId = getConversationId(currentUser.uid, selectedContact.uid);
+            const typingRef = ref(db, `typing/${convId}`);
+            typingUnsubscribe = onValue(typingRef, (snapshot) => {
+                const typingData = snapshot.val() || {};
+                const isTyping = Object.keys(typingData).some(uid => uid !== currentUser.uid && typingData[uid]?.typing === true);
+                if (isTyping) {
+                    typingIndicatorDiv.classList.remove('hidden');
+                } else {
+                    typingIndicatorDiv.classList.add('hidden');
+                }
+            });
+        }
+
+        // Mark messages as delivered and read
+        async function markMessagesAsDelivered(conversationId) {
+            if (!currentUser || !selectedContact) return;
+            const messagesRef = ref(db, `messages/${conversationId}`);
+            const snapshot = await get(messagesRef);
+            const msgs = snapshot.val() || {};
+            const updates = {};
+            for (let msgId in msgs) {
+                const msg = msgs[msgId];
+                if (msg.receiverId === currentUser.uid && msg.status === 'sent') {
+                    updates[`messages/${conversationId}/${msgId}/status`] = 'delivered';
+                }
+            }
+            if (Object.keys(updates).length) await update(ref(db), updates);
+        }
+        async function markMessagesAsRead(conversationId) {
+            if (!currentUser || !selectedContact) return;
+            const messagesRef = ref(db, `messages/${conversationId}`);
+            const snapshot = await get(messagesRef);
+            const msgs = snapshot.val() || {};
+            const updates = {};
+            for (let msgId in msgs) {
+                const msg = msgs[msgId];
+                if (msg.receiverId === currentUser.uid && (msg.status === 'delivered' || msg.status === 'sent')) {
+                    updates[`messages/${conversationId}/${msgId}/status`] = 'read';
+                }
+            }
+            if (Object.keys(updates).length) await update(ref(db), updates);
+        }
+
+        // Send message (text only)
+        async function sendMessage() {
+            if (!currentUser || !selectedContact) { showToast("Select a contact first", "error"); return; }
+            const text = messageInput.value.trim();
+            if (!text) return;
+            sendBtn.disabled = true;
+            try {
+                const convId = getConversationId(currentUser.uid, selectedContact.uid);
+                const newMsgRef = push(ref(db, `messages/${convId}`));
+                const messageData = {
+                    text,
+                    senderId: currentUser.uid,
+                    receiverId: selectedContact.uid,
+                    timestamp: serverTimestamp(),
+                    status: 'sent'
+                };
+                await set(newMsgRef, messageData);
+                messageInput.value = '';
+                stopTyping(); // clear own typing
+            } catch (err) {
+                console.error(err);
+                showToast("Failed to send message", "error");
+            } finally {
+                sendBtn.disabled = false;
+                messageInput.focus();
+            }
+        }
+
+        // Listen for messages and update read receipts
+        function startMessagesListener() {
+            if (messagesUnsubscribe) messagesUnsubscribe();
+            if (!selectedContact || !currentUser) return;
+            const convId = getConversationId(currentUser.uid, selectedContact.uid);
+            const messagesRef = ref(db, `messages/${convId}`);
+            messagesUnsubscribe = onValue(messagesRef, async (snapshot) => {
+                const messages = snapshot.val() || {};
+                const messagesArray = Object.entries(messages).map(([id, data]) => ({ id, ...data }));
+                messagesArray.sort((a,b) => (a.timestamp || 0) - (b.timestamp || 0));
+                renderMessages(messagesArray);
+                // mark delivered & read
+                await markMessagesAsDelivered(convId);
+                await markMessagesAsRead(convId);
+                setTimeout(() => messagesArea.scrollTop = messagesArea.scrollHeight, 100);
+            });
+        }
+
+        function renderMessages(messages) {
+            if (!messages.length) {
+                messagesArea.innerHTML = `<div class="flex flex-col items-center justify-center h-full text-gray-400"><i class="far fa-comment-dots text-4xl mb-2 opacity-30"></i><p>No messages yet. Say hi!</p></div>`;
+                return;
+            }
+            const html = messages.map(msg => {
+                const isOwn = msg.senderId === currentUser?.uid;
+                const timeStr = msg.timestamp ? new Date(msg.timestamp).toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' }) : '';
+                let tickIcon = '';
+                if (isOwn) {
+                    if (msg.status === 'sent') tickIcon = '<i class="fas fa-check text-xs text-gray-300 ml-1"></i>';
+                    else if (msg.status === 'delivered') tickIcon = '<i class="fas fa-check-double text-xs text-gray-300 ml-1"></i>';
+                    else if (msg.status === 'read') tickIcon = '<i class="fas fa-check-double text-xs text-blue-300 ml-1"></i>';
+                }
+                const bubbleClass = isOwn ? 'bubble-sent' : 'bubble-received';
+                return `
+                    <div class="flex ${isOwn ? 'justify-end' : 'justify-start'}">
+                        <div class="max-w-[75%] ${bubbleClass} px-4 py-2 shadow-sm">
+                            <p class="text-sm break-words">${escapeHtml(msg.text)}</p>
+                            <div class="text-[10px] ${isOwn ? 'text-blue-100' : 'text-gray-500'} text-right flex items-center justify-end gap-0.5 mt-1">
+                                ${timeStr} ${tickIcon}
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+            messagesArea.innerHTML = html;
+        }
+
+        // Select contact and set up listeners
+        function selectContact(contact) {
+            if (selectedContact && selectedContact.uid === contact.uid) return;
+            selectedContact = contact;
+            chatContactName.innerText = contact.name;
+            chatContactAvatar.src = contact.photoURL;
+            // Update presence in header (subscribe to contact's status)
+            if (presenceUnsubscribe) presenceUnsubscribe();
+            const contactRef = ref(db, `users/${contact.uid}`);
+            presenceUnsubscribe = onValue(contactRef, (snap) => {
+                const data = snap.val();
+                if (data) {
+                    const status = data.status === 'online' ? 'Online' : `Last seen ${data.lastSeen ? new Date(data.lastSeen).toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' }) : 'recently'}`;
+                    presenceStatusSpan.innerText = status;
+                } else presenceStatusSpan.innerText = 'unknown';
+            });
+            startTypingListener();
+            startMessagesListener();
+            // re-render contacts to highlight active
+            renderContacts([]); // force re-render by fetching again? but we keep contacts global; we'll call startContactsListener again? Instead we'll just refresh display using current contacts list? Better to refetch contacts list quickly
+            startContactsListener(); // this will re-render and highlight active
+            // mark delivered/read after opening
+            setTimeout(() => {
+                const convId = getConversationId(currentUser.uid, contact.uid);
+                markMessagesAsDelivered(convId);
+                markMessagesAsRead(convId);
+            }, 500);
+        }
+
+        // ----- WebRTC Audio Call Implementation (SimplePeer + Firebase signaling) -----
+        async function startAudioCall() {
+            if (!selectedContact) { showToast("Select a contact first", "error"); return; }
+            if (peer) { showToast("Call already in progress", "error"); return; }
+            try {
+                localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+                peer = new SimplePeer({ initiator: true, stream: localStream, trickle: true });
+                const convId = getConversationId(currentUser.uid, selectedContact.uid);
+                const callId = `call_${Date.now()}`;
+                currentCallId = callId;
+                const callRef = ref(db, `calls/${convId}/${callId}`);
+                // send offer/ice via Firebase
+                peer.on('signal', async (data) => {
+                    await set(callRef, { signal: data, from: currentUser.uid, to: selectedContact.uid, type: 'offer', timestamp: serverTimestamp() });
+                });
+                peer.on('connect', () => { showToast("Call connected!", "info"); });
+                peer.on('error', (err) => { console.error(err); showToast("Call error", "error"); cleanupCall(); });
+                peer.on('close', () => cleanupCall());
+                // listen for answer and ice from remote
+                const remoteSignalRef = ref(db, `calls/${convId}/${callId}/signal`);
+                const signalUnsub = onValue(remoteSignalRef, (snap) => {
+                    const signalData = snap.val();
+                    if (signalData && peer && !peer.destroyed) peer.signal(signalData);
+                });
+                // store unsub in peer
+                peer.signalUnsub = signalUnsub;
+                showToast("Calling...", "info");
+            } catch (err) {
+                console.error(err);
+                showToast("Could not access microphone", "error");
+            }
+        }
+
+        // Listen for incoming calls (when user is selected)
+        function listenForIncomingCalls() {
+            if (!currentUser) return;
+            if (callListenerUnsubscribe) callListenerUnsubscribe();
+            const callsRef = ref(db, 'calls');
+            callListenerUnsubscribe = onValue(callsRef, (snapshot) => {
+                const allCalls = snapshot.val() || {};
+                for (let convId in allCalls) {
+                    for (let callId in allCalls[convId]) {
+                        const call = allCalls[convId][callId];
+                        if (call.to === currentUser.uid && call.type === 'offer' && !peer) {
+                            // incoming call
+                            if (confirm(`${call.from} is calling you. Accept?`)) {
+                                acceptIncomingCall(convId, callId, call.signal, call.from);
+                            } else {
+                                // reject: remove call entry
+                                remove(ref(db, `calls/${convId}/${callId}`));
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        async function acceptIncomingCall(convId, callId, signalData, callerId) {
+            try {
+                localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+                peer = new SimplePeer({ initiator: false, stream: localStream, trickle: true });
+                peer.signal(signalData);
+                currentCallId = callId;
+                peer.on('signal', async (data) => {
+                    await set(ref(db, `calls/${convId}/${callId}/signal`), data);
+                    // update type to answer
+                    await update(ref(db, `calls/${convId}/${callId}`), { type: 'answer' });
+                });
+                peer.on('connect', () => showToast("Call connected", "info"));
+                peer.on('error', (err) => { console.error(err); cleanupCall(); });
+                peer.on('close', () => cleanupCall());
+                showToast("Call started", "info");
+            } catch (err) {
+                console.error(err);
+                showToast("Microphone access denied", "error");
+                cleanupCall();
+            }
+        }
+
+        function cleanupCall() {
+            if (peer) {
+                if (peer.signalUnsub) peer.signalUnsub();
+                peer.destroy();
+                peer = null;
+            }
+            if (localStream) localStream.getTracks().forEach(track => track.stop());
+            localStream = null;
+            if (currentCallId && selectedContact) {
+                const convId = getConversationId(currentUser.uid, selectedContact.uid);
+                remove(ref(db, `calls/${convId}/${currentCallId}`));
+                currentCallId = null;
+            }
+        }
+
+        // Input event for typing indicator
+        messageInput.addEventListener('input', () => {
+            if (messageInput.value.trim()) startTyping();
+            else stopTyping();
+        });
+        messageInput.addEventListener('blur', () => stopTyping());
+        sendBtn.addEventListener('click', sendMessage);
+        messageInput.addEventListener('keypress', (e) => { if (e.key === 'Enter' && !sendBtn.disabled) sendMessage(); });
+        audioCallBtn.addEventListener('click', startAudioCall);
+        logoutBtn.addEventListener('click', async () => {
+            await signOut(auth);
+            if (contactsUnsubscribe) contactsUnsubscribe();
+            if (messagesUnsubscribe) messagesUnsubscribe();
+            if (typingUnsubscribe) typingUnsubscribe();
+            if (presenceUnsubscribe) presenceUnsubscribe();
+            if (callListenerUnsubscribe) callListenerUnsubscribe();
+            cleanupCall();
+            location.reload();
+        });
+        searchInput.addEventListener('input', () => startContactsListener());
+
+        // Auth state
+        onAuthStateChanged(auth, async (user) => {
+            if (user) {
+                currentUser = user;
+                await saveUserToDB(user);
+                updateOwnPresence(true);
+                currentUserAvatar.src = user.photoURL || `https://ui-avatars.com/api/?name=${user.displayName?.[0] || 'U'}&background=ffffff&color=1e88e5`;
+                currentUserNameSpan.innerText = user.displayName || user.email.split('@')[0];
+                loginScreen.classList.add('hidden');
+                appContainer.classList.remove('hidden');
+                startContactsListener();
+                listenForIncomingCalls();
+                // reset selected contact
+                selectedContact = null;
+                chatContactName.innerText = "Select a contact";
+                chatContactAvatar.src = "https://ui-avatars.com/api/?background=1e88e5&color=fff";
+                presenceStatusSpan.innerText = "-";
+                messagesArea.innerHTML = `<div class="flex justify-center items-center h-full text-gray-400 flex-col"><i class="fas fa-comment-slash text-3xl mb-2 opacity-40"></i><p>👈 Pick a friend to chat</p></div>`;
+            } else {
+                if (currentUser) updateOwnPresence(false);
+                loginScreen.classList.remove('hidden');
+                appContainer.classList.add('hidden');
+                currentUser = null;
+                if (contactsUnsubscribe) contactsUnsubscribe();
+                if (messagesUnsubscribe) messagesUnsubscribe();
+                if (typingUnsubscribe) typingUnsubscribe();
+                if (presenceUnsubscribe) presenceUnsubscribe();
+                if (callListenerUnsubscribe) callListenerUnsubscribe();
+                cleanupCall();
+            }
+        });
+
+        googleBtn.addEventListener('click', () => signInWithPopup(auth, provider).catch(e => showToast(e.message, "error")));
+        showToast("Welcome to JRS Connect! Sign in to start", "info");
+    </script>
+</body>
+</html>
